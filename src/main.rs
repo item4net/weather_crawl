@@ -210,7 +210,7 @@ fn parse_html(base: &str, html: &String) {
     );
     let dt_path = dt_path.as_str();
     let observed_at = format!(
-        "{}/{}/{}T{}:{}:00+0900",
+        "{}-{}-{}T{}:{}:00+0900",
         &cap["year"],
         &cap["month"],
         &cap["day"],
