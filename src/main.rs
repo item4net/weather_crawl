@@ -29,6 +29,18 @@ use std::thread::sleep;
 use std::time::Duration;
 
 #[derive(Serialize, Deserialize)]
+struct CrawlResults {
+    observed_at: String,
+    records: Vec<Record>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CrawlResult {
+    observed_at: String,
+    record: Record,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 struct Record {
     id: u32,
     name: String,
@@ -42,7 +54,7 @@ struct Record {
     address: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Rain {
     is_raining: RainStatus,
     rain15: Option<f32>,
@@ -53,14 +65,14 @@ struct Rain {
     rainday: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Wind {
     direction_code: Option<f32>,
     direction_text: WindDirectionText,
     velocity: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Height(u32);
 impl FromStr for Height {
     type Err = ParseIntError;
@@ -73,7 +85,7 @@ impl FromStr for Height {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 enum RainStatus {
     Clear,
     Rain,
@@ -93,7 +105,7 @@ impl FromStr for RainStatus {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 enum WindDirectionText {
     N,
     NNW,
@@ -197,14 +209,36 @@ fn parse_html(base: &str, html: &String) {
         &cap["minute"],
     );
     let dt_path = dt_path.as_str();
-    let mut results: Vec<Record> = vec![];
+    let observed_at = format!(
+        "{}/{}/{}T{}:{}:00+0900",
+        &cap["year"],
+        &cap["month"],
+        &cap["day"],
+        &cap["hour"],
+        &cap["minute"],
+    );
+    let mut records: Vec<Record> = vec![];
     for el in document.select(&row_selector) {
         match make_record(el) {
-            Some(r) => results.push(r),
+            Some(record) => {
+                records.push(record.clone());
+                let result = CrawlResult {
+                    observed_at: observed_at.to_owned(),
+                    record: record.clone(),
+                };
+                match write_result_files(base, dt_path, &result) {
+                    Ok(_) => continue,
+                    Err(_) => continue,
+                };
+            },
             None => continue,
         };
     }
-    match write_files(base, dt_path, &results) {
+    let total_result = CrawlResults {
+        observed_at: observed_at.to_owned(),
+        records,
+    };
+    match write_total_result_files(base, dt_path, &total_result) {
         Ok(_) => println!("done: {}", dt_path),
         Err(e) => println!("error: {:?}", e),
     };
@@ -256,13 +290,24 @@ fn get<'a>(children: &mut Children<'a, Node>) -> Option<&'a str> {
     Some(ElementRef::wrap(children.next()?)?.text().next()?.into())
 }
 
-fn write_files(path: &str, dt_path: &str, results: &Vec<Record>) -> std::io::Result<()> {
+fn write_result_files(path: &str, dt_path: &str, result: &CrawlResult) -> std::io::Result<()> {
+    create_dir_all(format!("{}/{}/@{}", path, dt_path, result.record.id))?;
+    let file = File::create(format!("{}/{}/@{}/index.json", path, dt_path, result.record.id))?;
+    serde_json::to_writer(file, result)?;
+
+    create_dir_all(format!("{}/latest/@{}", path, result.record.id))?;
+    let file = File::create(format!("{}/latest/@{}/index.json", path, result.record.id))?;
+    serde_json::to_writer(file, result)?;
+    Ok(())
+}
+
+fn write_total_result_files(path: &str, dt_path: &str, result: &CrawlResults) -> std::io::Result<()> {
     create_dir_all(format!("{}/{}", path, dt_path))?;
     let file = File::create(format!("{}/{}/index.json", path, dt_path))?;
-    serde_json::to_writer(file, results)?;
+    serde_json::to_writer(file, result)?;
 
     create_dir_all(format!("{}/latest", path))?;
     let file = File::create(format!("{}/latest/index.json", path))?;
-    serde_json::to_writer(file, results)?;
+    serde_json::to_writer(file, result)?;
     Ok(())
 }
