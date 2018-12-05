@@ -163,16 +163,18 @@ fn main() -> Result<(), Box<std::error::Error>> {
                  .help("base path to store result json."))
         .get_matches();
     let base = matches.value_of("BASE").unwrap();
-    loop {
+    let mut limit = 5;
+    while limit > 0 {
         let resp = reqwest::get(url);
         if let Ok(mut r) = resp {
             if handle_response(base, &mut r) {
                 break;
             }
         }
-        sleep(Duration::from_millis(500))
+        sleep(Duration::from_millis(500));
+        limit -= 1;
     }
-   
+
     Ok(())
 }
 
