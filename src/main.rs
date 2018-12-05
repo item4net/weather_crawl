@@ -289,7 +289,7 @@ fn make_record(el: ElementRef) -> Option<Record> {
 }
 
 fn get<'a>(children: &mut Children<'a, Node>) -> Option<&'a str> {
-    Some(ElementRef::wrap(children.next()?)?.text().next()?.into())
+    Some(ElementRef::wrap(children.next()?)?.text().next()?.trim().into())
 }
 
 fn write_result_files(path: &str, dt_path: &str, result: &CrawlResult) -> std::io::Result<()> {
