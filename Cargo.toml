@@ -1,6 +1,6 @@
 [package]
 name = "aws_crawl"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Kim Jin Su <item4_hun@hotmail.com>"]
 
 [dependencies]
