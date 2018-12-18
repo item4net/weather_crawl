@@ -1,7 +1,8 @@
 [package]
 name = "aws_crawl"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Kim Jin Su <item4_hun@hotmail.com>"]
+edition = "2018"
 
 [dependencies]
 reqwest = "^0.9.5"
