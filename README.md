@@ -1,5 +1,11 @@
-AWS Crawl
----------
+Weather Crawl
+-------------
 
-Text program for study Rust-lang.
+Crawler to collect weather info of South Korea.
+
+
+LICENSE
+-------
+
+MIT
 

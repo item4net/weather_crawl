@@ -1,6 +1,6 @@
 [package]
-name = "aws_crawl"
-version = "0.2.1"
+name = "weather_crawl"
+version = "0.0.1"
 authors = ["Kim Jin Su <item4_hun@hotmail.com>"]
 edition = "2018"
 
