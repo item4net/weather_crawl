@@ -21,7 +21,7 @@ use regex::Regex;
 
 use scraper::{ElementRef, Html, Node, Selector};
 
-use std::fs::{File, create_dir_all};
+use std::fs::{File, create_dir_all, rename};
 use std::num::ParseIntError;
 use std::str::FromStr;
 use std::string::{ParseError, String};
@@ -269,7 +269,9 @@ fn get<'a>(children: &mut Children<'a, Node>) -> Option<&'a str> {
 
 fn write_result_files(path: &str, result: &CrawlResult) -> std::io::Result<()> {
     create_dir_all(format!("{}", path))?;
-    let file = File::create(format!("{}/index.json", path))?;
-    serde_json::to_writer(file, result)?;
+    let mut file = File::create(format!("{}/{}", path, result.observed_at))?;
+    serde_json::to_writer(&mut file, result)?;
+    file.sync_all()?;
+    rename(format!("{}/{}", path, result.observed_at), format!("{}/index.json", path))?;
     Ok(())
 }
