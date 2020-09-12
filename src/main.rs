@@ -1,15 +1,3 @@
-#[macro_use]
-extern crate serde_derive;
-
-extern crate clap;
-extern crate ego_tree;
-extern crate encoding;
-extern crate regex;
-extern crate reqwest;
-extern crate scraper;
-extern crate serde;
-extern crate serde_json;
-
 use clap::{Arg, App};
 
 use ego_tree::iter::Children;
@@ -17,9 +5,11 @@ use ego_tree::iter::Children;
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::WINDOWS_949;
 
-use regex::Regex;
+use rust_decimal::prelude::*;
 
 use scraper::{ElementRef, Html, Node, Selector};
+
+use serde::{Deserialize, Serialize};
 
 use std::fs::{File, create_dir_all, rename};
 use std::num::ParseIntError;
@@ -40,30 +30,30 @@ struct Record {
     name: String,
     height: Option<Height>,
     rain: Rain,
-    temperature: Option<f32>,
+    temperature: Option<Decimal>,
     wind1: Wind,
     wind10: Wind,
-    humidity: Option<u32>,
-    atmospheric: Option<f32>,
+    humidity: Option<Decimal>,
+    atmospheric: Option<Decimal>,
     address: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Rain {
     is_raining: RainStatus,
-    rain15: Option<f32>,
-    rain60: Option<f32>,
-    rain3h: Option<f32>,
-    rain6h: Option<f32>,
-    rain12h: Option<f32>,
-    rainday: Option<f32>,
+    rain15: Option<Decimal>,
+    rain60: Option<Decimal>,
+    rain3h: Option<Decimal>,
+    rain6h: Option<Decimal>,
+    rain12h: Option<Decimal>,
+    rainday: Option<Decimal>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Wind {
-    direction_code: Option<f32>,
+    direction_code: Option<Decimal>,
     direction_text: WindDirectionText,
-    velocity: Option<f32>,
+    velocity: Option<Decimal>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -147,7 +137,8 @@ impl FromStr for WindDirectionText {
     }
 }
 
-fn main() -> Result<(), Box<std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = "http://www.kma.go.kr/cgi-bin/aws/nph-aws_txt_min";
     let matches = App::new("aws-crawl")
         .arg(Arg::with_name("BASE")
@@ -159,9 +150,15 @@ fn main() -> Result<(), Box<std::error::Error>> {
     let base = matches.value_of("BASE").unwrap();
     let mut limit = 5;
     while limit > 0 {
-        let resp = reqwest::get(url);
-        if let Ok(mut r) = resp {
-            if handle_response(base, &mut r) {
+        let resp = reqwest::get(url).await;
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                let bytes = r.bytes().await?;
+                let blob = bytes.as_ref();
+                match WINDOWS_949.decode(&blob, DecoderTrap::Ignore) {
+                    Err(_) => false,
+                    Ok(html) => parse_html(base, &html),
+                };
                 break;
             }
         }
@@ -172,29 +169,12 @@ fn main() -> Result<(), Box<std::error::Error>> {
     Ok(())
 }
 
-fn handle_response(base: &str, resp: &mut reqwest::Response) -> bool {
-    if resp.status().is_success() {
-        let mut buf: Vec<u8> = vec![];
-        if let Err(_) = resp.copy_to(&mut buf) {
-            return false;
-        }
-        match WINDOWS_949.decode(&buf, DecoderTrap::Ignore) {
-            Err(_) => return false,
-            Ok(html) => {
-                parse_html(base, &html);
-                return true;
-            },
-        }
-    }
-    false
-}
-
-fn parse_html(base: &str, html: &String) {
+fn parse_html(base: &str, html: &String) -> bool {
     let document = Html::parse_document(html);
     let time_selector = Selector::parse("span.ehead").unwrap();
     let row_selector = Selector::parse("table table tr").unwrap();
     let dt = document.select(&time_selector).next().unwrap().text().next().unwrap();
-    let re = Regex::new(r"(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\.(?P<hour>\d{2}):(?P<minute>\d{2})$").unwrap();
+    let re = regex::Regex::new(r"(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\.(?P<hour>\d{2}):(?P<minute>\d{2})$").unwrap();
     let cap = re.captures(dt).unwrap();
     let observed_at = format!(
         "{}-{}-{}T{}:{}:00+0900",
@@ -204,7 +184,7 @@ fn parse_html(base: &str, html: &String) {
         &cap["hour"],
         &cap["minute"],
     );
-    let mut records: Vec<Record> = vec![];
+    let mut records: Vec<Record> = Vec::new();
     for el in document.select(&row_selector) {
         match make_record(el) {
             Some(record) => records.push(record.clone()),
@@ -219,36 +199,50 @@ fn parse_html(base: &str, html: &String) {
         Ok(_) => println!("done"),
         Err(e) => println!("error: {:?}", e),
     };
+
+    true
+}
+
+fn to_decimal_or_none(input: &str) -> Option<Decimal> {
+    match Decimal::from_str(input) {
+        Ok(x) => Some(x),
+        Err(_) => None,
+    }
 }
 
 fn make_record(el: ElementRef) -> Option<Record> {
     let mut children = el.children();
-    let id = get(&mut children)?.parse().ok()?;
-    let name = get(&mut children)?.into();
-    let height = get(&mut children)?.parse().ok();
+    let mut cell: [&str; 20] = [""; 20];
+    for i in 0..20 {
+        cell[i] = get(&mut children)?;
+    }
+
+    let id = u32::from_str(cell[0]).unwrap_or(0);
+    let name = cell[1].into();
+    let height = Height::from_str(cell[2]).ok();
     let rain = Rain {
-        is_raining: get(&mut children)?.parse().ok()?,
-        rain15: get(&mut children)?.parse().ok(),
-        rain60: get(&mut children)?.parse().ok(),
-        rain3h: get(&mut children)?.parse().ok(),
-        rain6h: get(&mut children)?.parse().ok(),
-        rain12h: get(&mut children)?.parse().ok(),
-        rainday: get(&mut children)?.parse().ok(),
+        is_raining: RainStatus::from_str(cell[3]).ok()?,
+        rain15: to_decimal_or_none(cell[4]),
+        rain60: to_decimal_or_none(cell[5]),
+        rain3h: to_decimal_or_none(cell[6]),
+        rain6h: to_decimal_or_none(cell[7]),
+        rain12h: to_decimal_or_none(cell[8]),
+        rainday: to_decimal_or_none(cell[9]),
     };
-    let temperature: Option<f32> = get(&mut children)?.parse().ok();
+    let temperature = to_decimal_or_none(cell[10]);
     let wind1 = Wind {
-        direction_code: get(&mut children)?.parse().ok(),
-        direction_text: get(&mut children)?.parse().unwrap(),
-        velocity: get(&mut children)?.parse().ok(),
+        direction_code: to_decimal_or_none(cell[11]),
+        direction_text: WindDirectionText::from_str(cell[12]).ok()?,
+        velocity: to_decimal_or_none(cell[13]),
     };
     let wind10 = Wind {
-        direction_code: get(&mut children)?.parse().ok(),
-        direction_text: get(&mut children)?.parse().unwrap(),
-        velocity: get(&mut children)?.parse().ok(),
+        direction_code: to_decimal_or_none(cell[14]),
+        direction_text: WindDirectionText::from_str(cell[15]).ok()?,
+        velocity: to_decimal_or_none(cell[16]),
     };
-    let humidity = get(&mut children)?.parse().ok();
-    let atmospheric = get(&mut children)?.parse().ok();
-    let address = get(&mut children)?.into();
+    let humidity = to_decimal_or_none(cell[17]);
+    let atmospheric = to_decimal_or_none(cell[18]);
+    let address = cell[19].into();
     Some(Record {
         id,
         name,
