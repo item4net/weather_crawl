@@ -5,14 +5,14 @@ authors = ["Kim Jin Su <item4_hun@hotmail.com>"]
 edition = "2018"
 
 [dependencies]
-rust_decimal = { version = "^1.7.0", features = ["serde-float"] }
-tokio = { version = "^0.2.22", features = ["macros"] }
-reqwest = "^0.10.8"
-env_logger = "^0.7.1"
+rust_decimal = { version = "^1.9.0", features = ["serde-float"] }
+tokio = { version = "^1.0.1", features = ["full"] }
+reqwest = "^0.11.0"
+env_logger = "^0.8.2"
 encoding = "^0.2.33"
 scraper = "^0.12.0"
 ego-tree = "^0.6.2"
-regex = "^1.3.9"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "^1.0.57"
+regex = "^1.4.2"
+serde = { version = "1.0.118", features = ["derive"] }
+serde_json = "^1.0.61"
 clap = "^2.33.3"
