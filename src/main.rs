@@ -139,7 +139,7 @@ impl FromStr for WindDirectionText {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let url = "http://www.kma.go.kr/cgi-bin/aws/nph-aws_txt_min";
+    let url = "https://www.kma.go.kr/cgi-bin/aws/nph-aws_txt_min";
     let matches = App::new("aws-crawl")
         .arg(Arg::with_name("BASE")
                  .required(true)
