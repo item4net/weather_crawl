@@ -1,9 +1,9 @@
-use clap::{Arg, App};
+use clap::{arg, command, value_parser};
 
 use ego_tree::iter::Children;
 
-use encoding::{Encoding, DecoderTrap};
 use encoding::all::WINDOWS_949;
+use encoding::{DecoderTrap, Encoding};
 
 use rust_decimal::prelude::*;
 
@@ -11,8 +11,9 @@ use scraper::{ElementRef, Html, Node, Selector};
 
 use serde::{Deserialize, Serialize};
 
-use std::fs::{File, create_dir_all, rename};
+use std::fs::{create_dir_all, rename, File};
 use std::num::ParseIntError;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::string::{ParseError, String};
 use std::thread::sleep;
@@ -62,7 +63,7 @@ impl FromStr for Height {
     type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s[..s.len()-1].parse::<u32>() {
+        match s[..s.len() - 1].parse::<u32>() {
             Ok(num) => Ok(Height(num)),
             Err(e) => Err(ParseIntError::from(e)),
         }
@@ -140,14 +141,10 @@ impl FromStr for WindDirectionText {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = "https://www.kma.go.kr/cgi-bin/aws/nph-aws_txt_min";
-    let matches = App::new("aws-crawl")
-        .arg(Arg::with_name("BASE")
-                 .required(true)
-                 .takes_value(true)
-                 .index(1)
-                 .help("base path to store result json."))
+    let matches = command!()
+        .arg(arg!(<base> "base path to store result json").value_parser(value_parser!(PathBuf)))
         .get_matches();
-    let base = matches.value_of("BASE").unwrap();
+    let base = matches.get_one::<PathBuf>("base").unwrap();
     let mut limit = 5;
     while limit > 0 {
         let resp = reqwest::get(url).await;
@@ -169,20 +166,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn parse_html(base: &str, html: &String) -> bool {
+fn parse_html(base: &PathBuf, html: &String) -> bool {
     let document = Html::parse_document(html);
     let time_selector = Selector::parse("span.ehead").unwrap();
     let row_selector = Selector::parse("table table tr").unwrap();
-    let dt = document.select(&time_selector).next().unwrap().text().next().unwrap();
-    let re = regex::Regex::new(r"(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\.(?P<hour>\d{2}):(?P<minute>\d{2})$").unwrap();
+    let dt = document
+        .select(&time_selector)
+        .next()
+        .unwrap()
+        .text()
+        .next()
+        .unwrap();
+    let re = regex::Regex::new(
+        r"(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\.(?P<hour>\d{2}):(?P<minute>\d{2})$",
+    )
+    .unwrap();
     let cap = re.captures(dt).unwrap();
     let observed_at = format!(
         "{}-{}-{}T{}:{}:00+0900",
-        &cap["year"],
-        &cap["month"],
-        &cap["day"],
-        &cap["hour"],
-        &cap["minute"],
+        &cap["year"], &cap["month"], &cap["day"], &cap["hour"], &cap["minute"],
     );
     let mut records: Vec<Record> = Vec::new();
     for el in document.select(&row_selector) {
@@ -258,14 +260,23 @@ fn make_record(el: ElementRef) -> Option<Record> {
 }
 
 fn get<'a>(children: &mut Children<'a, Node>) -> Option<&'a str> {
-    Some(ElementRef::wrap(children.next()?)?.text().next()?.trim().into())
+    Some(
+        ElementRef::wrap(children.next()?)?
+            .text()
+            .next()?
+            .trim()
+            .into(),
+    )
 }
 
-fn write_result_files(path: &str, result: &CrawlResult) -> std::io::Result<()> {
-    create_dir_all(format!("{}", path))?;
-    let mut file = File::create(format!("{}/{}", path, result.observed_at))?;
+fn write_result_files(path: &PathBuf, result: &CrawlResult) -> std::io::Result<()> {
+    create_dir_all(path)?;
+    let mut file = File::create(path.with_file_name(&result.observed_at))?;
     serde_json::to_writer(&mut file, result)?;
     file.sync_all()?;
-    rename(format!("{}/{}", path, result.observed_at), format!("{}/index.json", path))?;
+    rename(
+        path.with_file_name(&result.observed_at),
+        path.with_file_name("index.json"),
+    )?;
     Ok(())
 }
