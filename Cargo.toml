@@ -1,7 +1,7 @@
 [package]
 name = "weather_crawl"
 version = "0.2.0"
-authors = ["Kim Jin Su <item4_hun@hotmail.com>"]
+authors = ["Kim Jinsu <item4@localhost>"]
 edition = "2021"
 
 [dependencies]
