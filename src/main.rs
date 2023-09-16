@@ -271,12 +271,9 @@ fn get<'a>(children: &mut Children<'a, Node>) -> Option<&'a str> {
 
 fn write_result_files(path: &PathBuf, result: &CrawlResult) -> std::io::Result<()> {
     create_dir_all(path)?;
-    let mut file = File::create(path.with_file_name(&result.observed_at))?;
+    let mut file = File::create(path.join(&result.observed_at))?;
     serde_json::to_writer(&mut file, result)?;
     file.sync_all()?;
-    rename(
-        path.with_file_name(&result.observed_at),
-        path.with_file_name("index.json"),
-    )?;
+    rename(path.join(&result.observed_at), path.join("index.json"))?;
     Ok(())
 }

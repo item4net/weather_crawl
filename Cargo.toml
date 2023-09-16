@@ -1,6 +1,6 @@
 [package]
 name = "weather_crawl"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Kim Jinsu <item4@localhost>"]
 edition = "2021"
 
