@@ -1,18 +1,18 @@
 [package]
 name = "weather_crawl"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Kim Jinsu <item4@localhost>"]
 edition = "2021"
 
 [dependencies]
-rust_decimal = { version = "^1.35.0", features = ["serde-float"] }
-tokio = { version = "^1.37.0", features = ["full"] }
-reqwest = "^0.12.4"
-env_logger = "^0.11.3"
+rust_decimal = { version = "^1.36.0", features = ["serde-float"] }
+tokio = { version = "^1.43.0", features = ["full"] }
+reqwest = "^0.12.12"
+env_logger = "^0.11.6"
 encoding = "^0.2.33"
-scraper = "^0.19.0"
-ego-tree = "^0.6.2"
-regex = "^1.10.4"
-serde = { version = "1.0.198", features = ["derive"] }
-serde_json = "^1.0.116"
-clap = { version = "^4.5.4", features = ["cargo"] }
+scraper = "^0.22.0"
+ego-tree = "^0.10.0"
+regex = "^1.11.1"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "^1.0.137"
+clap = { version = "^4.5.27", features = ["cargo"] }
