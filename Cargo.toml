@@ -2,7 +2,7 @@
 name = "weather_crawl"
 version = "0.3.0"
 authors = ["Kim Jinsu <item4@localhost>"]
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 clap = { version = "^4.5.34", features = ["cargo"] }
