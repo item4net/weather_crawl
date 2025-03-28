@@ -1,21 +1,19 @@
 use clap::{arg, command, value_parser};
 
-use ego_tree::iter::Children;
-
 use encoding::all::WINDOWS_949;
 use encoding::{DecoderTrap, Encoding};
 
 use rust_decimal::prelude::*;
 
-use scraper::{ElementRef, Html, Node, Selector};
+use scraper::{ElementRef, Html, Selector};
 
 use serde::{Deserialize, Serialize};
 
-use std::fs::{create_dir_all, rename, File};
+use std::convert::{Infallible, TryFrom};
+use std::fs::{File, create_dir_all, rename};
 use std::num::ParseIntError;
 use std::path::PathBuf;
-use std::str::FromStr;
-use std::string::{ParseError, String};
+use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -38,6 +36,35 @@ struct Record {
     atmospheric: Option<Decimal>,
     address: String,
 }
+impl TryFrom<ElementRef<'_>> for Record {
+    type Error = ParseIntError;
+    fn try_from(tr_elem: ElementRef<'_>) -> Result<Self, Self::Error> {
+        let cell = tr_elem
+            .child_elements()
+            .map(|element| {
+                element
+                    .text()
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .trim()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+
+        Ok(Record {
+            id: cell[0].parse::<u32>()?,
+            name: cell[1].to_owned(),
+            height: Height::try_from(cell[2].to_owned()).ok(),
+            rain: Rain::try_from(cell[3..10].to_vec())?,
+            temperature: Decimal::try_from(cell[10].as_str()).ok(),
+            wind1: Wind::try_from(cell[11..14].to_vec())?,
+            wind10: Wind::try_from(cell[14..17].to_vec())?,
+            humidity: Decimal::try_from(cell[17].as_str()).ok(),
+            atmospheric: Decimal::try_from(cell[18].as_str()).ok(),
+            address: cell[19].to_owned(),
+        })
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Rain {
@@ -49,6 +76,20 @@ struct Rain {
     rain12h: Option<Decimal>,
     rainday: Option<Decimal>,
 }
+impl TryFrom<Vec<String>> for Rain {
+    type Error = ParseIntError;
+    fn try_from(cell: Vec<String>) -> Result<Self, Self::Error> {
+        Ok(Rain {
+            is_raining: RainStatus::try_from(cell[0].to_owned()).unwrap(),
+            rain15: Decimal::try_from(cell[1].as_str()).ok(),
+            rain60: Decimal::try_from(cell[2].as_str()).ok(),
+            rain3h: Decimal::try_from(cell[3].as_str()).ok(),
+            rain6h: Decimal::try_from(cell[4].as_str()).ok(),
+            rain12h: Decimal::try_from(cell[5].as_str()).ok(),
+            rainday: Decimal::try_from(cell[6].as_str()).ok(),
+        })
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Wind {
@@ -56,13 +97,22 @@ struct Wind {
     direction_text: WindDirectionText,
     velocity: Option<Decimal>,
 }
+impl TryFrom<Vec<String>> for Wind {
+    type Error = ParseIntError;
+    fn try_from(cell: Vec<String>) -> Result<Self, Self::Error> {
+        Ok(Wind {
+            direction_code: Decimal::try_from(cell[0].as_str()).ok(),
+            direction_text: WindDirectionText::try_from(cell[1].to_owned()).unwrap(),
+            velocity: Decimal::try_from(cell[2].as_str()).ok(),
+        })
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Height(u32);
-impl FromStr for Height {
-    type Err = ParseIntError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl TryFrom<String> for Height {
+    type Error = ParseIntError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
         match s[..s.len() - 1].parse::<u32>() {
             Ok(num) => Ok(Height(num)),
             Err(e) => Err(ParseIntError::from(e)),
@@ -77,11 +127,11 @@ enum RainStatus {
     Unavailable,
     Unknown,
 }
-impl FromStr for RainStatus {
-    type Err = ParseError;
+impl TryFrom<String> for RainStatus {
+    type Error = Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Ok(match s.as_str() {
             "●" => RainStatus::Rain,
             "○" => RainStatus::Clear,
             "." => RainStatus::Unavailable,
@@ -111,11 +161,11 @@ enum WindDirectionText {
     No,
     Unavailable,
 }
-impl FromStr for WindDirectionText {
-    type Err = ParseError;
+impl TryFrom<String> for WindDirectionText {
+    type Error = Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Ok(match s.as_str() {
             "N" => WindDirectionText::N,
             "NNW" => WindDirectionText::NNW,
             "NW" => WindDirectionText::NW,
@@ -172,30 +222,24 @@ fn parse_html(base: &PathBuf, html: &String) -> bool {
     let row_selector = Selector::parse("table table tr").unwrap();
     let dt = document
         .select(&time_selector)
-        .next()
-        .unwrap()
-        .text()
-        .next()
-        .unwrap();
+        .map(|elem| elem.text().collect::<Vec<_>>().join("").trim().to_string())
+        .collect::<Vec<_>>()
+        .join("");
     let re = regex::Regex::new(
         r"(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\.(?P<hour>\d{2}):(?P<minute>\d{2})$",
     )
     .unwrap();
-    let cap = re.captures(dt).unwrap();
+    let cap = re.captures(&dt.as_str()).unwrap();
     let observed_at = format!(
         "{}-{}-{}T{}:{}:00+0900",
         &cap["year"], &cap["month"], &cap["day"], &cap["hour"], &cap["minute"],
     );
-    let mut records: Vec<Record> = Vec::new();
-    for el in document.select(&row_selector) {
-        match make_record(el) {
-            Some(record) => records.push(record.clone()),
-            None => continue,
-        };
-    }
     let result = CrawlResult {
         observed_at: observed_at.to_owned(),
-        records,
+        records: document
+            .select(&row_selector)
+            .filter_map(|row_element| Record::try_from(row_element).ok())
+            .collect::<Vec<_>>(),
     };
     match write_result_files(base, &result) {
         Ok(_) => println!("done"),
@@ -203,70 +247,6 @@ fn parse_html(base: &PathBuf, html: &String) -> bool {
     };
 
     true
-}
-
-fn to_decimal_or_none(input: &str) -> Option<Decimal> {
-    match Decimal::from_str(input) {
-        Ok(x) => Some(x),
-        Err(_) => None,
-    }
-}
-
-fn make_record(el: ElementRef) -> Option<Record> {
-    let mut children = el.children();
-    let mut cell: [&str; 20] = [""; 20];
-    for i in 0..20 {
-        cell[i] = get(&mut children)?;
-    }
-
-    let id = u32::from_str(cell[0]).unwrap_or(0);
-    let name = cell[1].into();
-    let height = Height::from_str(cell[2]).ok();
-    let rain = Rain {
-        is_raining: RainStatus::from_str(cell[3]).ok()?,
-        rain15: to_decimal_or_none(cell[4]),
-        rain60: to_decimal_or_none(cell[5]),
-        rain3h: to_decimal_or_none(cell[6]),
-        rain6h: to_decimal_or_none(cell[7]),
-        rain12h: to_decimal_or_none(cell[8]),
-        rainday: to_decimal_or_none(cell[9]),
-    };
-    let temperature = to_decimal_or_none(cell[10]);
-    let wind1 = Wind {
-        direction_code: to_decimal_or_none(cell[11]),
-        direction_text: WindDirectionText::from_str(cell[12]).ok()?,
-        velocity: to_decimal_or_none(cell[13]),
-    };
-    let wind10 = Wind {
-        direction_code: to_decimal_or_none(cell[14]),
-        direction_text: WindDirectionText::from_str(cell[15]).ok()?,
-        velocity: to_decimal_or_none(cell[16]),
-    };
-    let humidity = to_decimal_or_none(cell[17]);
-    let atmospheric = to_decimal_or_none(cell[18]);
-    let address = cell[19].into();
-    Some(Record {
-        id,
-        name,
-        height,
-        rain,
-        temperature,
-        wind1,
-        wind10,
-        humidity,
-        atmospheric,
-        address,
-    })
-}
-
-fn get<'a>(children: &mut Children<'a, Node>) -> Option<&'a str> {
-    Some(
-        ElementRef::wrap(children.next()?)?
-            .text()
-            .next()?
-            .trim()
-            .into(),
-    )
 }
 
 fn write_result_files(path: &PathBuf, result: &CrawlResult) -> std::io::Result<()> {
