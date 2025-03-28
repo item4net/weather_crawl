@@ -5,14 +5,14 @@ authors = ["Kim Jinsu <item4@localhost>"]
 edition = "2021"
 
 [dependencies]
-rust_decimal = { version = "^1.36.0", features = ["serde-float"] }
-tokio = { version = "^1.43.0", features = ["full"] }
-reqwest = "^0.12.12"
-env_logger = "^0.11.6"
-encoding = "^0.2.33"
-scraper = "^0.22.0"
+clap = { version = "^4.5.34", features = ["cargo"] }
 ego-tree = "^0.10.0"
+encoding = "^0.2.33"
+env_logger = "^0.11.7"
 regex = "^1.11.1"
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "^1.0.137"
-clap = { version = "^4.5.27", features = ["cargo"] }
+reqwest = "^0.12.15"
+rust_decimal = { version = "^1.37.1", features = ["serde-float"] }
+scraper = "^0.23.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "^1.0.140"
+tokio = { version = "^1.44.1", features = ["full"] }
